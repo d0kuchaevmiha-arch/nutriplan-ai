@@ -1,0 +1,1459 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>NutriPlan AI — план питания на 30 дней</title>
+<style>
+  /* ===================== Цвета и базовые размеры ===================== */
+  :root{
+    color-scheme: light;
+    --bg:#f4f8f5; --surface:#ffffff; --surface-2:#eef5f0;
+    --text:#1b2a23; --muted:#56665e; --line:#d9e5dd;
+    --accent:#1d8556; --accent-strong:#14663f; --accent-soft:#e2f3e9;
+    --protein:#1d8556; --fat:#e09b2d; --carb:#4a7fc1;
+    --warn-bg:#fff5e0; --warn:#7a4f00; --warn-line:#f1d9a6;
+    --err-bg:#fdeceb; --err:#b3261e; --err-line:#f3c4c0;
+    --radius:18px;
+    --shadow:0 1px 2px rgba(20,45,32,.05),0 8px 28px rgba(20,45,32,.06);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+  a{color:var(--accent-strong)}
+  .wrap{max-width:880px;margin:0 auto;padding:28px 16px 56px}
+  .muted{color:var(--muted)}
+  [hidden]{display:none!important}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  /* ===================== Шапка ===================== */
+  .app-head{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+  .logo{width:46px;height:46px;border-radius:14px;background:var(--accent);display:grid;place-items:center;flex:none}
+  h1{font-size:1.55rem;line-height:1.2;margin:0}
+  .sub{margin:3px 0 0;color:var(--muted);font-size:.95rem}
+
+  /* ===================== Карточки ===================== */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:28px}
+  .card + .card{margin-top:18px}
+  @media (max-width:560px){ .card{padding:20px 16px} }
+
+  /* ===================== Индикатор шагов ===================== */
+  .stepper{list-style:none;display:flex;gap:8px;padding:0;margin:0 0 6px}
+  .stepper li{flex:1;min-width:0}
+  .stepper button{all:unset;display:block;width:100%;cursor:default;border-radius:6px}
+  .stepper li.reachable button{cursor:pointer}
+  .stepper button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+  .stepper .bar{display:block;height:6px;border-radius:99px;background:var(--line);margin-bottom:8px;transition:background .25s}
+  .stepper li.done .bar,.stepper li.current .bar{background:var(--accent)}
+  .stepper .lbl{display:block;font-size:.82rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stepper li.current .lbl{color:var(--text);font-weight:600}
+  .step-caption{font-size:.85rem;color:var(--muted);margin:0 0 18px}
+  @media (max-width:560px){ .stepper .lbl{display:none} }
+
+  /* ===================== Шаги анкеты и поля ===================== */
+  fieldset{border:0;margin:0;padding:0;min-width:0}
+  .step-title{font-size:1.3rem;margin:0 0 4px;outline:none}
+  .step-desc{color:var(--muted);margin:0 0 22px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px 18px}
+  @media (max-width:560px){ .grid2{grid-template-columns:1fr} }
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field + .field, .group + .field, .field + .group, .group + .group{margin-top:20px}
+  .grid2 > .field{margin-top:0}
+  label.lbl, .glabel{font-weight:600;font-size:.95rem;padding:0}
+  .glabel{margin-bottom:8px}
+  .opt{font-weight:400;color:var(--muted);font-size:.85rem}
+  .hint{margin:0;font-size:.85rem;color:var(--muted)}
+  .error{margin:0;font-size:.86rem;color:var(--err);font-weight:500}
+  .error:empty{display:none}
+
+  .input-unit{display:flex;align-items:center;background:#fff;border:1.5px solid var(--line);border-radius:12px;transition:border-color .2s, box-shadow .2s}
+  .input-unit:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  .input-unit input{flex:1;min-width:0;border:0;background:transparent;font:inherit;color:inherit;padding:12px 14px;outline:none}
+  .input-unit .unit{padding:0 14px 0 4px;color:var(--muted);font-size:.92rem}
+  .input-unit.invalid{border-color:var(--err)}
+  .input-unit.invalid:focus-within{box-shadow:0 0 0 4px var(--err-bg)}
+  textarea, select, .text-input{width:100%;font:inherit;color:inherit;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;outline:none;transition:border-color .2s, box-shadow .2s}
+  textarea{min-height:84px;resize:vertical}
+  textarea:focus, select:focus, .text-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+  select{appearance:none;-webkit-appearance:none;padding-right:42px;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2356665e' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 16px center}
+  select[aria-invalid="true"], textarea[aria-invalid="true"], .text-input[aria-invalid="true"]{border-color:var(--err)}
+  .activity-hint{background:var(--surface-2);border-radius:12px;padding:10px 14px;font-size:.9rem;margin:0}
+
+  /* Кнопки-варианты (радио и чекбоксы) */
+  .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .choice{position:relative;display:block}
+  .choice input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+  .choice span{display:block;height:100%;border:1.5px solid var(--line);border-radius:12px;padding:11px 14px;background:#fff;transition:border-color .2s, background .2s;cursor:pointer}
+  .choice span b{display:block;font-weight:600}
+  .choice span small{display:block;color:var(--muted);font-size:.82rem;line-height:1.35;margin-top:2px}
+  .choice input:checked + span{border-color:var(--accent);background:var(--accent-soft)}
+  .choice input:focus-visible + span{outline:3px solid var(--accent);outline-offset:2px}
+  .choice:hover span{border-color:#b9cfc2}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chips .choice span{border-radius:99px;padding:8px 14px;font-size:.93rem}
+  .chips .choice input:checked + span::before{content:"✓ ";color:var(--accent-strong);font-weight:700}
+
+  /* Навигация по шагам */
+  .step-nav{display:flex;justify-content:space-between;gap:12px;margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}
+
+  /* ===================== Кнопки ===================== */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-weight:600;border-radius:12px;padding:12px 20px;border:1.5px solid transparent;cursor:pointer;transition:background .2s, border-color .2s, opacity .2s;min-height:46px}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent-strong)}
+  .btn-ghost{background:#fff;color:var(--text);border-color:var(--line)}
+  .btn-ghost:hover{border-color:#b9cfc2;background:var(--surface-2)}
+  .btn-danger{background:#fff;color:var(--err);border-color:var(--err-line)}
+  .btn-danger:hover{background:var(--err-bg)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-sm{padding:8px 14px;min-height:38px;font-size:.92rem}
+  .btn-row{display:flex;flex-wrap:wrap;gap:10px}
+
+  /* ===================== Результаты ===================== */
+  .res-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .res-head h2{margin:0;font-size:1.35rem;outline:none}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .stat{background:var(--surface-2);border-radius:14px;padding:18px}
+  .stat h3{margin:0 0 10px;font-size:.88rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .big{font-size:2.1rem;font-weight:700;line-height:1.1}
+  .big small{font-size:1rem;font-weight:500;color:var(--muted)}
+  .rows{margin:12px 0 0;padding:0;list-style:none;font-size:.93rem}
+  .rows li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px dashed var(--line)}
+  .rows li span:last-child{font-weight:600;white-space:nowrap}
+  .badge{display:inline-block;font-size:.8rem;font-weight:600;padding:3px 10px;border-radius:99px;margin-left:6px;vertical-align:middle}
+  .badge.low{background:#e6effa;color:#24508a}
+  .badge.norm{background:var(--accent-soft);color:var(--accent-strong)}
+  .badge.elev{background:var(--warn-bg);color:var(--warn)}
+  .badge.high{background:var(--err-bg);color:var(--err)}
+  .macro-wrap{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap}
+  .donut{width:108px;height:108px;border-radius:50%;flex:none;display:grid;place-items:center}
+  .donut span{width:70px;height:70px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;text-align:center;font-weight:700;line-height:1.1;font-size:.95rem}
+  .donut span small{display:block;font-weight:500;color:var(--muted);font-size:.75rem}
+  .legend{list-style:none;margin:0;padding:0;font-size:.92rem;flex:1 1 170px;min-width:0}
+  .legend li{display:flex;align-items:center;gap:8px;padding:3px 0}
+  .legend i{width:11px;height:11px;border-radius:3px;flex:none}
+  .legend b{margin-left:auto;white-space:nowrap}
+
+  .note{border-radius:12px;padding:12px 14px;font-size:.92rem;margin:14px 0 0;border:1px solid}
+  .note.info{background:var(--surface-2);border-color:var(--line)}
+  .note.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn)}
+  .note.err{background:var(--err-bg);border-color:var(--err-line);color:var(--err)}
+  .note p{margin:0}
+  .note p + p{margin-top:6px}
+
+  /* ===================== План ===================== */
+  .key-box{background:var(--surface-2);border-radius:14px;padding:16px;margin:16px 0}
+  .key-row{display:flex;gap:8px}
+  .key-row .input-unit{flex:1;min-width:0}
+  .key-row .btn{flex:none}
+  .check{display:flex;align-items:center;gap:8px;font-size:.92rem;margin-top:10px;cursor:pointer}
+  .check input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+  .progress-box{margin:18px 0 6px}
+  .progress-top{display:flex;justify-content:space-between;gap:10px;font-size:.92rem;margin-bottom:8px}
+  .progress{height:10px;background:var(--line);border-radius:99px;overflow:hidden}
+  .progress i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .5s}
+  .status{font-size:.9rem;color:var(--muted);margin:8px 0 0;display:flex;align-items:center;gap:8px}
+  .spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .weeks{margin-top:16px}
+  details.week{background:#fff;border:1px solid var(--line);border-radius:14px;margin-top:10px;overflow:hidden}
+  details.week > summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:600}
+  details.week > summary::-webkit-details-marker{display:none}
+  details.week > summary::after{content:"";width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin-left:4px;transition:transform .2s;flex:none}
+  details.week[open] > summary::after{transform:rotate(-135deg)}
+  details.week > summary:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+  .wk-title{flex:1}
+  .wk-title .muted{font-weight:400}
+  .wk-count{font-size:.82rem;font-weight:600;color:var(--muted);background:var(--surface-2);padding:3px 10px;border-radius:99px;white-space:nowrap}
+  .wk-count.ready{background:var(--accent-soft);color:var(--accent-strong)}
+  .day{border-top:1px solid var(--line);padding:14px 16px}
+  .day-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .day h4{margin:0;font-size:1.02rem}
+  .chip{font-size:.8rem;font-weight:600;background:var(--accent-soft);color:var(--accent-strong);padding:3px 10px;border-radius:99px}
+  .chip.chip-warn{background:var(--warn-bg);color:var(--warn)}
+  .meals{margin:8px 0;padding-left:20px;font-size:.94rem}
+  .meals li{margin:4px 0}
+  .total{display:inline-block;margin:4px 0 0;background:var(--surface-2);border-radius:8px;padding:6px 10px;font-size:.9rem;font-weight:600}
+  .pad{padding:12px 16px;margin:0;border-top:1px solid var(--line)}
+  .shop-body{padding:4px 16px 14px;border-top:1px solid var(--line);font-size:.94rem}
+  .shop-body h4{margin:14px 0 6px;font-size:1rem}
+  .shop-body p{margin:4px 0}
+
+  .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+
+  /* ===================== Подвал и уведомления ===================== */
+  .disclaimer{font-size:.87rem;color:var(--muted);margin:22px 4px 0}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--text);color:#fff;padding:11px 18px;border-radius:12px;font-size:.93rem;opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;z-index:10;max-width:calc(100% - 32px)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important;animation-duration:1.5s!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div class="logo" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+    </div>
+    <div>
+      <h1>NutriPlan AI</h1>
+      <p class="sub">Персональный план питания на 30 дней: расчёт процента жира, КБЖУ и меню от ИИ</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== АНКЕТА ===================== -->
+    <section id="formView" class="card" aria-label="Анкета">
+      <ol class="stepper" id="stepper"></ol>
+      <p class="step-caption" id="stepCaption" aria-live="polite"></p>
+
+      <form id="form" novalidate autocomplete="off">
+
+        <!-- Шаг 1. Данные -->
+        <fieldset class="step" data-title="Данные">
+          <h2 class="step-title" tabindex="-1">Основные данные</h2>
+          <p class="step-desc">Нужны для расчёта обмена веществ и процента жира.</p>
+
+          <fieldset class="group" data-error="sex">
+            <legend class="glabel">Пол</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="sex" value="male" aria-describedby="err-sex"><span><b>Мужской</b></span></label>
+              <label class="choice"><input type="radio" name="sex" value="female" aria-describedby="err-sex"><span><b>Женский</b></span></label>
+            </div>
+            <p class="error" id="err-sex"></p>
+          </fieldset>
+
+          <div class="field">
+            <label class="lbl" for="age">Возраст</label>
+            <div class="input-unit"><input id="age" inputmode="numeric" aria-describedby="hint-age err-age"><span class="unit">лет</span></div>
+            <p class="hint" id="hint-age">Полных лет, от 14 до 100</p>
+            <p class="error" id="err-age"></p>
+          </div>
+
+          <div class="grid2" style="margin-top:20px">
+            <div class="field">
+              <label class="lbl" for="height">Рост</label>
+              <div class="input-unit"><input id="height" inputmode="decimal" aria-describedby="hint-height err-height"><span class="unit">см</span></div>
+              <p class="hint" id="hint-height">Без обуви, например 172</p>
+              <p class="error" id="err-height"></p>
+            </div>
+            <div class="field">
+              <label class="lbl" for="weight">Вес</label>
+              <div class="input-unit"><input id="weight" inputmode="decimal" aria-describedby="hint-weight err-weight"><span class="unit">кг</span></div>
+              <p class="hint" id="hint-weight">Утром натощак, например 68,5</p>
+              <p class="error" id="err-weight"></p>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Шаг 2. Замеры -->
+        <fieldset class="step" data-title="Замеры" hidden>
+          <h2 class="step-title" tabindex="-1">Замеры</h2>
+          <p class="step-desc">Сантиметровой лентой, прямо по коже. Лента прилегает плотно, но не врезается.</p>
+
+          <div class="field">
+            <label class="lbl" for="neck">Обхват шеи</label>
+            <div class="input-unit"><input id="neck" inputmode="decimal" aria-describedby="hint-neck err-neck"><span class="unit">см</span></div>
+            <p class="hint" id="hint-neck">Чуть ниже кадыка, лента слегка наклонена вперёд-вниз. Не напрягайте шею.</p>
+            <p class="error" id="err-neck"></p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="waist">Обхват талии</label>
+            <div class="input-unit"><input id="waist" inputmode="decimal" aria-describedby="hint-waist err-waist"><span class="unit">см</span></div>
+            <p class="hint" id="hint-waist">Выберите пол на первом шаге — подсказка подстроится.</p>
+            <p class="error" id="err-waist"></p>
+          </div>
+          <div class="field" id="hipsField" hidden>
+            <label class="lbl" for="hips">Обхват бёдер</label>
+            <div class="input-unit"><input id="hips" inputmode="decimal" aria-describedby="hint-hips err-hips"><span class="unit">см</span></div>
+            <p class="hint" id="hint-hips">По самой выступающей точке ягодиц, ноги вместе.</p>
+            <p class="error" id="err-hips"></p>
+          </div>
+        </fieldset>
+
+        <!-- Шаг 3. Цель -->
+        <fieldset class="step" data-title="Цель" hidden>
+          <h2 class="step-title" tabindex="-1">Ваша цель</h2>
+          <p class="step-desc">От цели зависит калорийность: дефицит, поддержание или небольшой профицит.</p>
+
+          <fieldset class="group">
+            <legend class="glabel">Что хотите получить</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="goal" value="lose" aria-describedby="err-goal"><span><b>Похудение</b><small>Дефицит 15% калорий</small></span></label>
+              <label class="choice"><input type="radio" name="goal" value="maintain" aria-describedby="err-goal"><span><b>Поддержание веса</b><small>Калории = расход</small></span></label>
+              <label class="choice"><input type="radio" name="goal" value="gain" aria-describedby="err-goal"><span><b>Набор массы</b><small>Профицит 10% калорий</small></span></label>
+            </div>
+            <p class="error" id="err-goal"></p>
+          </fieldset>
+
+          <div class="field" id="goalWeightField" hidden>
+            <label class="lbl" for="goalWeight">Желаемый вес <span class="opt">— необязательно</span></label>
+            <div class="input-unit"><input id="goalWeight" inputmode="decimal" aria-describedby="hint-goalWeight err-goalWeight"><span class="unit">кг</span></div>
+            <p class="hint" id="hint-goalWeight">Покажем примерный срок достижения цели.</p>
+            <p class="error" id="err-goalWeight"></p>
+          </div>
+        </fieldset>
+
+        <!-- Шаг 4. Активность -->
+        <fieldset class="step" data-title="Активность" hidden>
+          <h2 class="step-title" tabindex="-1">Уровень активности</h2>
+          <p class="step-desc">Учитывайте и тренировки, и работу. Если сомневаетесь — выбирайте уровень ниже: так точнее.</p>
+          <div class="field">
+            <label class="lbl" for="activity">Активность</label>
+            <select id="activity" aria-describedby="activityHint err-activity">
+              <option value="">Выберите уровень…</option>
+            </select>
+            <p class="activity-hint" id="activityHint" aria-live="polite">Коэффициент активности умножает базовый обмен: чем больше движения, тем больше калорий нужно.</p>
+            <p class="error" id="err-activity"></p>
+          </div>
+        </fieldset>
+
+        <!-- Шаг 5. Питание -->
+        <fieldset class="step" data-title="Питание" hidden>
+          <h2 class="step-title" tabindex="-1">Предпочтения в питании</h2>
+          <p class="step-desc">ИИ составит меню с учётом этих ограничений.</p>
+
+          <div class="field">
+            <label class="lbl" for="meals">Приёмов пищи в день</label>
+            <select id="meals">
+              <option value="3">3 — завтрак, обед, ужин</option>
+              <option value="4" selected>4 — плюс перекус</option>
+              <option value="5">5 — плюс перекус и полдник</option>
+              <option value="6">6 — дробное питание</option>
+            </select>
+          </div>
+
+          <fieldset class="group">
+            <legend class="glabel">Ограничения и аллергии <span class="opt">— можно несколько</span></legend>
+            <div class="chips" id="restrChips"></div>
+            <div class="field" id="restrOtherField" hidden style="margin-top:12px">
+              <label class="lbl" for="restrOtherText">Другое ограничение</label>
+              <input class="text-input" id="restrOtherText" maxlength="200" placeholder="Например: без свинины, диабет 2 типа, без сахара" aria-describedby="err-restrOtherText">
+              <p class="error" id="err-restrOtherText"></p>
+            </div>
+          </fieldset>
+
+          <div class="field">
+            <label class="lbl" for="dislikes">Нелюбимые продукты <span class="opt">— необязательно</span></label>
+            <textarea id="dislikes" maxlength="400" placeholder="Например: печень, оливки, кинза, творог"></textarea>
+          </div>
+
+          <fieldset class="group">
+            <legend class="glabel">Бюджет</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="budget" value="economy"><span><b>Экономный</b><small>Крупы, яйца, курица, сезонные овощи</small></span></label>
+              <label class="choice"><input type="radio" name="budget" value="medium" checked><span><b>Средний</b><small>Обычный супермаркет</small></span></label>
+              <label class="choice"><input type="radio" name="budget" value="unlimited"><span><b>Без ограничений</b><small>Рыба, ягоды, авокадо</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend class="glabel">Время на готовку одного блюда</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="cookTime" value="20"><span><b>До 20 минут</b></span></label>
+              <label class="choice"><input type="radio" name="cookTime" value="40" checked><span><b>До 40 минут</b></span></label>
+              <label class="choice"><input type="radio" name="cookTime" value="any"><span><b>Не ограничено</b></span></label>
+            </div>
+          </fieldset>
+        </fieldset>
+
+        <div class="step-nav">
+          <button type="button" class="btn btn-ghost" id="prevBtn">← Назад</button>
+          <button type="submit" class="btn btn-primary" id="nextBtn">Далее →</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===================== РЕЗУЛЬТАТЫ ===================== -->
+    <section id="resultsView" hidden aria-label="Результаты">
+      <div class="card">
+        <div class="res-head">
+          <h2 tabindex="-1" id="resTitle">Ваши результаты</h2>
+          <button type="button" class="btn btn-ghost btn-sm" id="editBtn">✎ Изменить анкету</button>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div id="resNotes"></div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0;font-size:1.35rem">План питания на 30 дней</h2>
+        <p class="muted" style="margin:4px 0 0">Меню составляет ИИ по вашим цифрам. План собирается по частям — по 6 дней за запрос, — так длинный ответ не обрывается.</p>
+
+        <div class="key-box" id="keyBox">
+          <label class="lbl" for="apiKey">API-ключ Anthropic</label>
+          <div class="key-row" style="margin-top:6px">
+            <div class="input-unit"><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-describedby="hint-apiKey err-apiKey"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="toggleKey" aria-pressed="false">Показать</button>
+          </div>
+          <p class="hint" id="hint-apiKey" style="margin-top:6px">Ключ нужен, чтобы приложение работало вне Claude. Получить его можно в <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">консоли Anthropic</a>. Ключ уходит только на сервер Anthropic и больше никуда.</p>
+          <p class="error" id="err-apiKey"></p>
+          <label class="check"><input type="checkbox" id="rememberKey"> Запомнить ключ на этом устройстве</label>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" id="generateBtn">Составить план на 30 дней</button>
+          <button type="button" class="btn btn-danger" id="stopBtn" hidden>Остановить</button>
+        </div>
+
+        <div class="progress-box" id="progressBox" hidden>
+          <div class="progress-top"><span id="progressText">Готово 0 из 30 дней</span><span id="progressPct" class="muted">0%</span></div>
+          <div class="progress" role="progressbar" aria-labelledby="progressText" aria-valuemin="0" aria-valuemax="30" aria-valuenow="0" id="progressBar"><i id="progressFill"></i></div>
+          <p class="status" id="status" aria-live="polite"></p>
+        </div>
+
+        <div id="planError" aria-live="assertive"></div>
+
+        <div class="weeks" id="weeks"></div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-ghost" id="copyBtn" disabled>📋 Скопировать</button>
+          <button type="button" class="btn btn-ghost" id="downloadBtn" disabled>⬇ Скачать .txt</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="disclaimer"><b>Важно:</b> это справочный расчёт, а не медицинская рекомендация. При заболеваниях, беременности и сильном дефиците веса проконсультируйтесь с врачом. Все расчёты выполняются в вашем браузере; в ИИ отправляются только данные анкеты и результаты расчётов.</p>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- =====================================================================
+     ФОРМУЛЫ: чистые функции без обращения к странице.
+     Их можно скопировать и проверить отдельно (например, в консоли браузера).
+     ===================================================================== -->
+<script id="formulas">
+'use strict';
+
+/** Уровни активности: коэффициент умножает базовый обмен (BMR). */
+const ACTIVITY_LEVELS = [
+  { id: 'min',      factor: 1.2,   label: 'Минимальная',   short: 'сидячая работа, без тренировок',
+    hint: 'Офисная работа, мало ходьбы (до 5 000 шагов), тренировок нет.' },
+  { id: 'light',    factor: 1.375, label: 'Лёгкая',        short: '1–3 тренировки в неделю',
+    hint: '1–3 лёгкие тренировки в неделю или много ходьбы (7–10 тысяч шагов в день).' },
+  { id: 'moderate', factor: 1.55,  label: 'Умеренная',     short: '3–5 тренировок в неделю',
+    hint: '3–5 тренировок средней интенсивности в неделю: зал, бег, плавание по часу.' },
+  { id: 'high',     factor: 1.725, label: 'Высокая',       short: '6–7 тренировок в неделю',
+    hint: '6–7 интенсивных тренировок в неделю или активная работа на ногах весь день.' },
+  { id: 'very',     factor: 1.9,   label: 'Очень высокая', short: 'тяжёлый труд или 2 тренировки в день',
+    hint: 'Тяжёлый физический труд (стройка, грузчик) или профессиональный спорт, 2 тренировки в день.' },
+];
+
+/** Цели: на сколько процентов меняем суточный расход. */
+const GOALS = {
+  lose:     { label: 'Похудение',        adjust: -0.15 },
+  maintain: { label: 'Поддержание веса', adjust: 0 },
+  gain:     { label: 'Набор массы',      adjust: 0.10 },
+};
+
+/** Безопасный минимум калорий в день. */
+const SAFE_MIN_KCAL = { female: 1200, male: 1500 };
+
+/** Округление до d знаков после запятой. */
+function round(n, d = 0) { const k = 10 ** d; return Math.round(n * k) / k; }
+
+/** Индекс массы тела: вес / рост² (рост в метрах). */
+function calcBMI(weightKg, heightCm) {
+  const h = heightCm / 100;
+  return weightKg / (h * h);
+}
+
+/** Проверка, что процент жира получился правдоподобным. */
+function checkFatValue(v) {
+  if (!Number.isFinite(v) || v < 2 || v > 70) {
+    return { ok: false, error: 'Замеры дают нереалистичный процент жира. Перемеряйте шею и талию: возможно, перепутаны поля или единицы (нужны сантиметры).' };
+  }
+  return { ok: true, value: v };
+}
+
+/**
+ * Процент жира по формуле ВМС США (US Navy), размеры в сантиметрах.
+ * Возвращает { ok:true, value } или { ok:false, error } — вместо NaN.
+ */
+function navyBodyFat({ sex, heightCm, neckCm, waistCm, hipsCm }) {
+  if (sex === 'male') {
+    const diff = waistCm - neckCm;
+    if (!(diff > 0)) return { ok: false, error: 'Обхват талии должен быть больше обхвата шеи — проверьте замеры.' };
+    const v = 495 / (1.0324 - 0.19077 * Math.log10(diff) + 0.15456 * Math.log10(heightCm)) - 450;
+    return checkFatValue(v);
+  }
+  const diff = waistCm + hipsCm - neckCm;
+  if (!(diff > 0)) return { ok: false, error: 'Сумма талии и бёдер должна быть больше обхвата шеи — проверьте замеры.' };
+  const v = 495 / (1.29579 - 0.35004 * Math.log10(diff) + 0.22100 * Math.log10(heightCm)) - 450;
+  return checkFatValue(v);
+}
+
+/** Процент жира по формуле Деуренберга (через ИМТ). Пол: 1 — мужчина, 0 — женщина. */
+function deurenbergBodyFat({ sex, age, bmi }) {
+  const s = sex === 'male' ? 1 : 0;
+  return 1.20 * bmi + 0.23 * age - 10.8 * s - 5.4;
+}
+
+/**
+ * Границы категорий процента жира с учётом пола и возраста
+ * (по мотивам таблиц Gallagher et al., 2000). low — нижняя граница нормы,
+ * norm — верхняя граница нормы, elev — граница «высокого».
+ */
+const FAT_RANGES = {
+  male:   [ { maxAge: 39, low: 8,  norm: 20, elev: 25 }, { maxAge: 59, low: 11, norm: 22, elev: 28 }, { maxAge: Infinity, low: 13, norm: 25, elev: 30 } ],
+  female: [ { maxAge: 39, low: 21, norm: 33, elev: 39 }, { maxAge: 59, low: 23, norm: 34, elev: 40 }, { maxAge: Infinity, low: 24, norm: 36, elev: 42 } ],
+};
+
+/** Категория процента жира: низкий / норма / повышенный / высокий. */
+function bodyFatCategory(sex, age, pct) {
+  const r = FAT_RANGES[sex].find(x => age <= x.maxAge);
+  const normRange = [r.low, r.norm];
+  if (pct < r.low)  return { key: 'low',  label: 'Низкий',     normRange };
+  if (pct < r.norm) return { key: 'norm', label: 'Норма',      normRange };
+  if (pct < r.elev) return { key: 'elev', label: 'Повышенный', normRange };
+  return               { key: 'high', label: 'Высокий',    normRange };
+}
+
+/** Базовый обмен по Миффлину — Сан-Жеору: калории, которые тело тратит в покое. */
+function mifflinBMR({ sex, weightKg, heightCm, age }) {
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * age;
+  return sex === 'male' ? base + 5 : base - 161;
+}
+
+/** Суточный расход с учётом активности. */
+function calcTDEE(bmr, factor) { return bmr * factor; }
+
+/** Калории под цель: −15% / 0% / +10%. */
+function goalCalories(tdee, goal) { return tdee * (1 + GOALS[goal].adjust); }
+
+/** Не даём норме опуститься ниже безопасного минимума. */
+function applySafetyFloor(kcal, sex) {
+  const min = SAFE_MIN_KCAL[sex];
+  return kcal < min ? { kcal: min, raised: true, min } : { kcal, raised: false, min };
+}
+
+/**
+ * БЖУ на день.
+ * Белок: похудение 2.2 г/кг, набор 2.0, поддержание 1.8.
+ * При ИМТ > 30 белок считаем на «нормальный» вес (ИМТ 25), иначе цифра выходит завышенной.
+ * Жиры: 25% калорий (30% при поддержании). Углеводы — остаток (не меньше 15% калорий).
+ */
+function calcMacros({ calories, weightKg, heightCm, goal }) {
+  const h = heightCm / 100;
+  const bmiVal = weightKg / (h * h);
+  const adjusted = bmiVal > 30;
+  const refWeight = adjusted ? 25 * h * h : weightKg;
+  const perKg = goal === 'lose' ? 2.2 : goal === 'gain' ? 2.0 : 1.8;
+  const fatShare = goal === 'maintain' ? 0.30 : 0.25;
+
+  let proteinG = perKg * refWeight;
+  const fatG = calories * fatShare / 9;
+  const minCarbKcal = calories * 0.15;
+  if (calories - proteinG * 4 - fatG * 9 < minCarbKcal) {
+    proteinG = Math.max(1.6 * refWeight, (calories - fatG * 9 - minCarbKcal) / 4);
+  }
+  const carbsG = Math.max(0, (calories - proteinG * 4 - fatG * 9) / 4);
+
+  const P = Math.round(proteinG), F = Math.round(fatG), C = Math.round(carbsG);
+  const pK = P * 4, fK = F * 9, cK = C * 4, total = pK + fK + cK;
+  const pPct = Math.round(pK / total * 100);
+  const fPct = Math.round(fK / total * 100);
+  return {
+    protein: { g: P, kcal: pK, pct: pPct },
+    fat:     { g: F, kcal: fK, pct: fPct },
+    carbs:   { g: C, kcal: cK, pct: 100 - pPct - fPct },
+    perKg: round(P / refWeight, 1),
+    refWeight: round(refWeight, 1),
+    adjusted,
+  };
+}
+
+/** Примерный срок до желаемого веса (1 кг жира ≈ 7700 ккал). */
+function weeksToGoal({ weightKg, goalWeight, tdee, target }) {
+  if (!goalWeight) return null;
+  const diff = Math.abs(target - tdee);
+  if (diff < 50) return null;
+  const kgPerWeek = diff * 7 / 7700;
+  return { weeks: Math.abs(weightKg - goalWeight) / kgPerWeek, kgPerWeek };
+}
+
+/** Все расчёты разом. На вход — данные анкеты и коэффициент активности. */
+function calcAll(i) {
+  const bmi = calcBMI(i.weightKg, i.heightCm);
+  const navy = navyBodyFat(i);
+  if (!navy.ok) return { ok: false, error: navy.error };
+  const deurenberg = deurenbergBodyFat({ sex: i.sex, age: i.age, bmi });
+  const avgFat = (navy.value + deurenberg) / 2;
+  const category = bodyFatCategory(i.sex, i.age, avgFat);
+  const bmr = mifflinBMR(i);
+  const tdee = calcTDEE(bmr, i.factor);
+  const rawTarget = goalCalories(tdee, i.goal);
+  const floor = applySafetyFloor(rawTarget, i.sex);
+  const target = Math.round(floor.kcal);
+  const macros = calcMacros({ calories: target, weightKg: i.weightKg, heightCm: i.heightCm, goal: i.goal });
+  const goalEta = i.goal !== 'maintain' ? weeksToGoal({ weightKg: i.weightKg, goalWeight: i.goalWeight, tdee, target }) : null;
+  return {
+    ok: true, bmi, navy: navy.value, deurenberg, avgFat, category,
+    bmr, tdee, rawTarget, target, floorApplied: floor.raised, safeMin: floor.min,
+    macros, goalEta, divergence: Math.abs(navy.value - deurenberg),
+  };
+}
+</script>
+
+<!-- =====================================================================
+     ПРИЛОЖЕНИЕ: анкета, экран результатов, запросы к ИИ, экспорт.
+     ===================================================================== -->
+<script id="app">
+'use strict';
+
+/* ===================== Настройки (легко поменять) ===================== */
+const MODEL = 'claude-sonnet-5-5';              // модель Claude
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const API_VERSION = '2023-06-01';
+const TOTAL_DAYS = 30;
+const DAYS_PER_REQUEST = 6;                     // 30 дней = 5 запросов по 6 дней
+const MAX_TOKENS_DAYS = 8192;                   // запас длины ответа на 6 дней
+const MAX_TOKENS_SHOPPING = 8192;
+const REQUEST_TIMEOUT_MS = 180000;              // 3 минуты на один запрос
+const MAX_ATTEMPTS_PER_CHUNK = 3;               // сколько раз докачивать недостающие дни
+const AUTO_RETRY_DELAYS = [4000, 12000];        // автоповтор при перегрузке/лимитах
+const KEY_STORAGE = 'nutriplan.apiKey';
+
+/* ===================== Справочники ===================== */
+const RESTRICTIONS = [
+  ['gluten', 'Без глютена'], ['lactose', 'Без лактозы'], ['vegetarian', 'Вегетарианство'],
+  ['vegan', 'Веганство'], ['nuts', 'Без орехов'], ['seafood', 'Без морепродуктов'],
+  ['halal', 'Халяль'], ['other', 'Другое'],
+];
+const BUDGETS = {
+  economy:   { label: 'Экономный',       ai: 'экономный: недорогие базовые и сезонные продукты — крупы, яйца, курица, бобовые, капуста, морковь, замороженные овощи; без дорогих продуктов' },
+  medium:    { label: 'Средний',         ai: 'средний: обычные продукты супермаркета, рыба и говядина — пару раз в неделю' },
+  unlimited: { label: 'Без ограничений', ai: 'без ограничений: можно дорогую рыбу, морепродукты (если не запрещены), ягоды, авокадо и т. п.' },
+};
+const COOK_TIMES = {
+  '20': { label: 'До 20 минут',   ai: 'не больше 20 минут активного приготовления на блюдо; можно заготовки заранее' },
+  '40': { label: 'До 40 минут',   ai: 'не больше 40 минут на блюдо' },
+  any:  { label: 'Не ограничено', ai: 'время приготовления не ограничено' },
+};
+const MEAL_NAMES = {
+  3: ['Завтрак', 'Обед', 'Ужин'],
+  4: ['Завтрак', 'Обед', 'Перекус', 'Ужин'],
+  5: ['Завтрак', 'Перекус', 'Обед', 'Полдник', 'Ужин'],
+  6: ['Завтрак', 'Второй завтрак', 'Обед', 'Полдник', 'Ужин', 'Поздний перекус'],
+};
+const SEX_LABEL = { male: 'мужской', female: 'женский' };
+
+/* Части плана (по 6 дней) и недели для аккордеона */
+const CHUNKS = (() => { const a = []; for (let s = 1; s <= TOTAL_DAYS; s += DAYS_PER_REQUEST) { const c = []; for (let d = s; d < Math.min(s + DAYS_PER_REQUEST, TOTAL_DAYS + 1); d++) c.push(d); a.push(c); } return a; })();
+const WEEKS = (() => { const a = []; for (let s = 1; s <= TOTAL_DAYS; s += 7) { const w = []; for (let d = s; d < Math.min(s + 7, TOTAL_DAYS + 1); d++) w.push(d); a.push(w); } return a; })();
+
+/* ===================== Мелкие помощники ===================== */
+const $ = id => document.getElementById(id);
+const form = $('form');
+const fmt = (n, d = 0) => Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: d });
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(new ApiError('stopped')); }, { once: true });
+});
+function isoDate(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function daysLabel(arr) {
+  if (arr.length === 1) return `день ${arr[0]}`;
+  const contiguous = arr.every((d, i) => i === 0 || d === arr[i - 1] + 1);
+  return contiguous ? `дни ${arr[0]}–${arr[arr.length - 1]}` : `дни ${arr.join(', ')}`;
+}
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+/** localStorage может быть недоступен (приватный режим) — оборачиваем в try/catch. */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* недоступно — не страшно */ } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* недоступно */ } },
+};
+
+/* ===================== Состояние ===================== */
+const state = { step: 0, maxReached: 0, input: null, calc: null, inputSig: null };
+const plan = { days: {}, shopping: '', running: false, controller: null, failed: null, stopped: false };
+
+/* ===================== Построение динамических частей формы ===================== */
+const steps = [...document.querySelectorAll('.step')];
+
+(function buildForm() {
+  // Индикатор шагов
+  $('stepper').innerHTML = steps.map((s, i) =>
+    `<li data-i="${i}"><button type="button" aria-label="Шаг ${i + 1}: ${s.dataset.title}"><span class="bar"></span><span class="lbl">${i + 1}. ${s.dataset.title}</span></button></li>`
+  ).join('');
+
+  // Уровни активности
+  const sel = $('activity');
+  ACTIVITY_LEVELS.forEach(a => {
+    const o = document.createElement('option');
+    o.value = a.id;
+    o.textContent = `${a.label} (×${String(a.factor).replace('.', ',')}) — ${a.short}`;
+    sel.appendChild(o);
+  });
+
+  // Ограничения
+  $('restrChips').innerHTML = RESTRICTIONS.map(([v, l]) =>
+    `<label class="choice"><input type="checkbox" name="restr" value="${v}"${v === 'other' ? ' id="restrOther"' : ''}><span>${l}</span></label>`
+  ).join('');
+})();
+
+/* ===================== Валидация ===================== */
+/** Число из текстового поля: понимает и запятую, и точку. null — пусто, NaN — не число. */
+function num(id) {
+  const raw = $(id).value.trim().replace(',', '.').replace(/\s+/g, '');
+  if (raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
+function setError(id, msg) {
+  const el = $('err-' + id);
+  if (el) el.textContent = msg || '';
+  const inp = $(id);
+  if (inp) {
+    inp.setAttribute('aria-invalid', msg ? 'true' : 'false');
+    inp.closest('.input-unit')?.classList.toggle('invalid', !!msg);
+  }
+}
+function range(id, min, max, opt = {}) {
+  const v = num(id);
+  if (v === null) {
+    if (opt.optional) { setError(id, ''); return true; }
+    setError(id, 'Заполните это поле'); return false;
+  }
+  if (Number.isNaN(v)) { setError(id, 'Введите число, например 72 или 72,5'); return false; }
+  if (opt.int && !Number.isInteger(v)) { setError(id, 'Введите целое число'); return false; }
+  if (v < min || v > max) { setError(id, `Допустимо от ${fmt(min)} до ${fmt(max)}${opt.unit ? ' ' + opt.unit : ''}`); return false; }
+  setError(id, ''); return true;
+}
+function radioReq(name, msg) {
+  const ok = !!form.elements[name].value;
+  setError(name, ok ? '' : msg);
+  return ok;
+}
+const isFemale = () => form.elements.sex.value === 'female';
+const all = results => results.every(Boolean);
+
+const validators = [
+  // 1. Данные
+  () => all([
+    radioReq('sex', 'Выберите пол'),
+    range('age', 14, 100, { int: true, unit: 'лет' }),
+    range('height', 120, 230, { unit: 'см' }),
+    range('weight', 30, 300, { unit: 'кг' }),
+  ]),
+  // 2. Замеры
+  () => {
+    const ok = all([
+      range('neck', 20, 70, { unit: 'см' }),
+      range('waist', 40, 200, { unit: 'см' }),
+      isFemale() ? range('hips', 50, 200, { unit: 'см' }) : (setError('hips', ''), true),
+    ]);
+    if (!ok) return false;
+    if (num('waist') <= num('neck')) { setError('waist', 'Обхват талии должен быть больше обхвата шеи — проверьте замеры.'); return false; }
+    const navy = navyBodyFat({ sex: form.elements.sex.value, heightCm: num('height'), neckCm: num('neck'), waistCm: num('waist'), hipsCm: num('hips') });
+    if (!navy.ok) { setError('waist', navy.error); return false; }
+    return true;
+  },
+  // 3. Цель
+  () => {
+    const okGoal = radioReq('goal', 'Выберите цель');
+    const g = form.elements.goal.value;
+    if (!okGoal || g === 'maintain') { setError('goalWeight', ''); return okGoal; }
+    if (!range('goalWeight', 30, 300, { optional: true, unit: 'кг' })) return false;
+    const gw = num('goalWeight');
+    if (gw === null) return true;
+    const w = num('weight'), h = num('height') / 100;
+    const minSafe = Math.ceil(18.5 * h * h);
+    if (g === 'lose' && gw >= w) { setError('goalWeight', `Для похудения укажите вес меньше текущего (${fmt(w, 1)} кг)`); return false; }
+    if (g === 'gain' && gw <= w) { setError('goalWeight', `Для набора массы укажите вес больше текущего (${fmt(w, 1)} кг)`); return false; }
+    if (gw < minSafe) { setError('goalWeight', `Это ниже нижней границы нормы (ИМТ 18,5). Безопасный минимум для вашего роста — около ${minSafe} кг.`); return false; }
+    setError('goalWeight', '');
+    return true;
+  },
+  // 4. Активность
+  () => {
+    const ok = !!$('activity').value;
+    setError('activity', ok ? '' : 'Выберите уровень активности');
+    return ok;
+  },
+  // 5. Питание
+  () => {
+    if ($('restrOther').checked && !$('restrOtherText').value.trim()) {
+      setError('restrOtherText', 'Опишите ограничение или снимите отметку «Другое»'); return false;
+    }
+    setError('restrOtherText', '');
+    return true;
+  },
+];
+
+function focusFirstInvalid(stepEl) {
+  const err = [...stepEl.querySelectorAll('.error')].find(e => e.textContent.trim());
+  const box = err?.closest('.field, .group');
+  box?.querySelector('input:not([type=hidden]), select, textarea')?.focus();
+}
+
+/* ===================== Переключение шагов ===================== */
+function showStep(i, focus = true) {
+  state.step = i;
+  state.maxReached = Math.max(state.maxReached, i);
+  steps.forEach((s, k) => { s.hidden = k !== i; });
+  [...$('stepper').children].forEach((li, k) => {
+    li.className = (k < i ? 'done ' : '') + (k === i ? 'current ' : '') + (k <= state.maxReached ? 'reachable' : '');
+    const b = li.querySelector('button');
+    if (k === i) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+    b.tabIndex = k <= state.maxReached ? 0 : -1;
+  });
+  $('stepCaption').textContent = `Шаг ${i + 1} из ${steps.length} · ${steps[i].dataset.title}`;
+  $('prevBtn').disabled = i === 0;
+  $('nextBtn').textContent = i === steps.length - 1 ? 'Рассчитать ✓' : 'Далее →';
+  if (focus) steps[i].querySelector('.step-title').focus();
+}
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  const i = state.step;
+  if (!validators[i]()) { focusFirstInvalid(steps[i]); return; }
+  if (i < steps.length - 1) showStep(i + 1);
+  else computeAndShow();
+});
+$('prevBtn').addEventListener('click', () => { if (state.step > 0) showStep(state.step - 1); });
+$('stepper').addEventListener('click', e => {
+  const li = e.target.closest('li'); if (!li) return;
+  const i = +li.dataset.i;
+  if (i === state.step || i > state.maxReached) return;
+  // Вперёд — только если текущий шаг заполнен верно
+  if (i > state.step && !validators[state.step]()) { focusFirstInvalid(steps[state.step]); return; }
+  showStep(i);
+});
+
+/* Реакция полей на выбор */
+function syncSex() {
+  const f = isFemale(), chosen = !!form.elements.sex.value;
+  $('hipsField').hidden = !f;
+  $('hint-waist').textContent = !chosen
+    ? 'Выберите пол на первом шаге — подсказка подстроится.'
+    : f ? 'В самом узком месте (обычно чуть выше пупка), на спокойном выдохе, живот не втягивать.'
+        : 'Горизонтально на уровне пупка, на спокойном выдохе, живот не втягивать.';
+}
+function syncGoal() {
+  const g = form.elements.goal.value;
+  $('goalWeightField').hidden = !(g === 'lose' || g === 'gain');
+}
+form.addEventListener('change', e => {
+  if (e.target.name === 'sex') { syncSex(); setError('sex', ''); }
+  if (e.target.name === 'goal') { syncGoal(); setError('goal', ''); }
+  if (e.target.id === 'restrOther') {
+    $('restrOtherField').hidden = !e.target.checked;
+    if (e.target.checked) $('restrOtherText').focus(); else setError('restrOtherText', '');
+  }
+  if (e.target.id === 'activity') {
+    const a = ACTIVITY_LEVELS.find(x => x.id === e.target.value);
+    $('activityHint').textContent = a ? `${a.label}, коэффициент ×${String(a.factor).replace('.', ',')}. ${a.hint}` : 'Коэффициент активности умножает базовый обмен: чем больше движения, тем больше калорий нужно.';
+    setError('activity', '');
+  }
+  // Взаимоисключения ограничений: веганство включает вегетарианство
+  if (e.target.value === 'vegan' && e.target.checked) form.querySelector('input[value=vegetarian]').checked = false;
+  if (e.target.value === 'vegetarian' && e.target.checked) form.querySelector('input[value=vegan]').checked = false;
+});
+// Сбрасываем ошибку при вводе
+form.addEventListener('input', e => { if (e.target.id && $('err-' + e.target.id)) setError(e.target.id, ''); });
+
+/* ===================== Расчёт и экран результатов ===================== */
+function readInputs() {
+  const sex = form.elements.sex.value;
+  const goal = form.elements.goal.value;
+  return {
+    sex, age: num('age'), heightCm: num('height'), weightKg: num('weight'),
+    neckCm: num('neck'), waistCm: num('waist'), hipsCm: sex === 'female' ? num('hips') : null,
+    goal, goalWeight: goal === 'maintain' ? null : num('goalWeight'),
+    activity: $('activity').value, meals: +$('meals').value,
+    restrictions: [...form.querySelectorAll('input[name=restr]:checked')].map(i => i.value).filter(v => v !== 'other'),
+    restrOther: $('restrOther').checked ? $('restrOtherText').value.trim() : '',
+    dislikes: $('dislikes').value.trim(),
+    budget: form.elements.budget.value, cookTime: form.elements.cookTime.value,
+  };
+}
+
+function computeAndShow() {
+  const input = readInputs();
+  const act = ACTIVITY_LEVELS.find(a => a.id === input.activity);
+  const calc = calcAll({ ...input, factor: act.factor });
+  if (!calc.ok) { showStep(1); setError('waist', calc.error); $('waist').focus(); return; }
+
+  const sig = JSON.stringify(input);
+  if (state.inputSig !== sig) resetPlan();     // анкета изменилась — старый план неактуален
+  state.inputSig = sig; state.input = input; state.calc = calc;
+
+  renderResults();
+  $('formView').hidden = true;
+  $('resultsView').hidden = false;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  $('resTitle').focus({ preventScroll: true });
+}
+
+$('editBtn').addEventListener('click', () => {
+  $('resultsView').hidden = true;
+  $('formView').hidden = false;
+  state.maxReached = steps.length - 1;
+  showStep(0);
+  window.scrollTo({ top: 0 });
+});
+
+function restrictionsText(input, forAi = false) {
+  const list = input.restrictions.map(v => RESTRICTIONS.find(r => r[0] === v)[1].toLowerCase());
+  if (input.restrOther) list.push(input.restrOther);
+  return list.length ? list.join(', ') : (forAi ? 'нет' : 'нет');
+}
+
+function renderResults() {
+  const r = state.calc, i = state.input, m = r.macros;
+  const act = ACTIVITY_LEVELS.find(a => a.id === i.activity);
+  const p = m.protein.pct, f = m.fat.pct;
+
+  $('stats').innerHTML = `
+    <div class="stat">
+      <h3>Процент жира</h3>
+      <div class="big">${fmt(r.avgFat, 1)}<small>%</small> <span class="badge ${r.category.key}">${r.category.label}</span></div>
+      <ul class="rows">
+        <li><span>Метод ВМС США (по замерам)</span><span>${fmt(r.navy, 1)}%</span></li>
+        <li><span>Метод Деуренберга (по ИМТ)</span><span>${fmt(r.deurenberg, 1)}%</span></li>
+        <li><span>Норма для вас</span><span>${r.category.normRange[0]}–${r.category.normRange[1]}%</span></li>
+        <li><span>ИМТ</span><span>${fmt(r.bmi, 1)}</span></li>
+      </ul>
+    </div>
+    <div class="stat">
+      <h3>Калории в день</h3>
+      <div class="big">${fmt(r.target)} <small>ккал</small></div>
+      <ul class="rows">
+        <li><span>Базовый обмен (BMR) — в покое</span><span>${fmt(r.bmr)} ккал</span></li>
+        <li><span>Расход с активностью (TDEE)</span><span>${fmt(r.tdee)} ккал</span></li>
+        <li><span>Цель</span><span>${GOALS[i.goal].label}${GOALS[i.goal].adjust ? ` (${GOALS[i.goal].adjust > 0 ? '+' : '−'}${Math.abs(GOALS[i.goal].adjust * 100)}%)` : ''}</span></li>
+        <li><span>Активность</span><span>${act.label} ×${String(act.factor).replace('.', ',')}</span></li>
+      </ul>
+    </div>
+    <div class="stat">
+      <h3>БЖУ в день</h3>
+      <div class="macro-wrap">
+        <div class="donut" role="img" aria-label="Распределение калорий: белки ${p}%, жиры ${f}%, углеводы ${m.carbs.pct}%"
+             style="background:conic-gradient(var(--protein) 0 ${p}%, var(--fat) ${p}% ${p + f}%, var(--carb) ${p + f}% 100%)">
+          <span>${fmt(r.target)}<small>ккал</small></span>
+        </div>
+        <ul class="legend">
+          <li><i style="background:var(--protein)"></i>Белки<b>${m.protein.g} г · ${p}%</b></li>
+          <li><i style="background:var(--fat)"></i>Жиры<b>${m.fat.g} г · ${f}%</b></li>
+          <li><i style="background:var(--carb)"></i>Углеводы<b>${m.carbs.g} г · ${m.carbs.pct}%</b></li>
+        </ul>
+      </div>
+      <p class="hint" style="margin-top:10px">Белок: ${fmt(m.perKg, 1)} г на кг${m.adjusted ? ' «нормального» веса' : ' веса'}.</p>
+    </div>`;
+
+  // Пояснения и предупреждения
+  const notes = [];
+  if (r.floorApplied) notes.push(['warn', `Расчётная норма ${fmt(r.rawTarget)} ккал ниже безопасного минимума ${fmt(r.safeMin)} ккал. Мы подняли норму до ${fmt(r.safeMin)} ккал: результат придёт медленнее, зато без вреда для здоровья.`]);
+  if (i.age < 18) notes.push(['warn', 'До 18 лет формулы дают лишь грубую оценку, а строгий дефицит калорий нежелателен — растущему организму нужна энергия. Обсудите план с врачом.']);
+  if (r.divergence > 8) notes.push(['warn', `Методы заметно расходятся (${fmt(r.navy, 1)}% и ${fmt(r.deurenberg, 1)}%). Так бывает при большой мышечной массе или неточных замерах — перемеряйте или считайте цифру приблизительной.`]);
+  if (m.adjusted) notes.push(['info', `При ИМТ больше 30 белок считается на «нормальный» вес для вашего роста (${fmt(m.refWeight, 1)} кг), иначе норма получилась бы завышенной.`]);
+  if (r.goalEta) notes.push(['info', `До желаемого веса ${fmt(i.goalWeight, 1)} кг — примерно ${fmt(Math.ceil(r.goalEta.weeks))} нед. (≈${fmt(r.goalEta.kgPerWeek, 2)} кг в неделю). Это грубая оценка: по мере изменения веса норму стоит пересчитывать раз в 2–4 недели.`]);
+  $('resNotes').innerHTML = notes.map(([t, txt]) => `<div class="note ${t}"><p>${escapeHtml(txt)}</p></div>`).join('');
+
+  renderPlan();
+  updatePlanUI();
+}
+
+/* ===================== Ошибки API ===================== */
+const API_ERRORS = {
+  offline:    { text: 'Нет подключения к интернету. Проверьте сеть и нажмите «Повторить».' },
+  network:    { text: 'Не удалось связаться с сервером ИИ. Проверьте интернет; иногда запрос блокируют VPN, корпоративная сеть или расширение-блокировщик. Если файл открыт двойным кликом и ошибка повторяется, запустите его через локальный сервер (см. инструкцию).' },
+  timeout:    { text: 'Сервер не ответил за 3 минуты. Нажмите «Повторить» — обычно со второй попытки всё проходит.' },
+  auth:       { text: 'API-ключ не подошёл. Проверьте, что он скопирован целиком (начинается с «sk-ant-») и не отозван в консоли Anthropic.' },
+  permission: { text: 'У этого ключа нет прав на такой запрос. Проверьте настройки ключа и рабочего пространства в консоли Anthropic.' },
+  notfound:   { text: `Модель «${MODEL}» не найдена или недоступна для вашего ключа. Укажите доступную модель в константе MODEL в начале скрипта.` },
+  rate:       { text: 'Превышен лимит запросов к API. Подождите минуту и нажмите «Повторить».', retry: true },
+  overloaded: { text: 'Сервер ИИ сейчас перегружен. Подождите немного и нажмите «Повторить».', retry: true },
+  server:     { text: 'Временная ошибка на стороне сервера ИИ. Попробуйте ещё раз чуть позже.', retry: true },
+  billing:    { text: 'На аккаунте Anthropic закончились средства или не подключена оплата. Пополните баланс в консоли и нажмите «Повторить».' },
+  toolarge:   { text: 'Запрос получился слишком большим. Сократите список нелюбимых продуктов и ограничений и повторите.' },
+  empty:      { text: 'ИИ вернул пустой ответ. Нажмите «Повторить».' },
+  stopped:    { text: 'Генерация остановлена. Готовые дни сохранены — нажмите «Продолжить», чтобы досоставить план.' },
+};
+class ApiError extends Error {
+  constructor(kind, detail) {
+    const base = API_ERRORS[kind]?.text;
+    super(kind === 'bad' ? `Сервер отклонил запрос: ${detail}` : kind === 'format' ? detail : (base || detail || 'Неизвестная ошибка'));
+    this.kind = kind;
+    this.retryable = !!API_ERRORS[kind]?.retry;
+  }
+  static fromResponse(status, data) {
+    const msg = data?.error?.message || '';
+    const type = data?.error?.type || '';
+    if (status === 401) return new ApiError('auth');
+    if (status === 403) return new ApiError('permission');
+    if (status === 404) return new ApiError('notfound');
+    if (status === 413) return new ApiError('toolarge');
+    if (status === 429) return new ApiError('rate');
+    if (status === 529 || type === 'overloaded_error') return new ApiError('overloaded');
+    if (status >= 500) return new ApiError('server');
+    if (/credit|balance|billing/i.test(msg)) return new ApiError('billing');
+    return new ApiError('bad', msg || `код ответа ${status}`);
+  }
+}
+
+/* ===================== Запрос к Claude ===================== */
+async function callClaudeOnce({ key, system, messages, maxTokens, signal }) {
+  if (navigator.onLine === false) throw new ApiError('offline');
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, REQUEST_TIMEOUT_MS);
+  const relay = () => ctrl.abort();
+  signal.addEventListener('abort', relay, { once: true });
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': API_VERSION,
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages }),
+    });
+    let data = null;
+    try { data = await res.json(); }
+    catch {
+      if (signal.aborted) throw new ApiError('stopped');
+      if (timedOut) throw new ApiError('timeout');
+    }
+    if (!res.ok) throw ApiError.fromResponse(res.status, data);
+    const text = (data?.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    if (!text) throw new ApiError('empty');
+    return { text, stopReason: data.stop_reason };
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    if (signal.aborted) throw new ApiError('stopped');
+    if (timedOut) throw new ApiError('timeout');
+    throw new ApiError('network');
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', relay);
+  }
+}
+
+/** Запрос с автоповтором при перегрузке, лимитах и сбоях сервера. */
+async function callClaude(opts) {
+  for (let i = 0; ; i++) {
+    try { return await callClaudeOnce(opts); }
+    catch (e) {
+      if (e.retryable && i < AUTO_RETRY_DELAYS.length && !opts.signal.aborted) {
+        setStatus(`${API_ERRORS[e.kind].text.split('.')[0]}. Повторяем автоматически через ${AUTO_RETRY_DELAYS[i] / 1000} с…`, true);
+        await sleep(AUTO_RETRY_DELAYS[i], opts.signal);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+/* ===================== Промпты для ИИ ===================== */
+function buildSystemDays() {
+  const meals = MEAL_NAMES[state.input.meals];
+  return `Ты — опытный диетолог-нутрициолог. Составляешь практичные планы питания на русском языке из продуктов, которые легко купить в обычном супермаркете в России и СНГ.
+
+Правила:
+1. Строго соблюдай ограничения и аллергии: ни одного запрещённого продукта, в том числе в соусах, заправках и как ингредиент.
+2. Не используй нелюбимые продукты.
+3. Калорийность каждого дня — в пределах ±5% от нормы, БЖУ — близко к целевым.
+4. Для каждого ингредиента указывай граммовку (крупы и макароны — в сухом виде, мясо и рыбу — в сыром, с пометкой «сух.» или «сыр.»).
+5. Блюда разнообразные: одно и то же блюдо — не чаще раза в 5–6 дней. Используй продукты повторно в разных блюдах, чтобы покупки не пропадали.
+6. Время приготовления соответствует ограничению пользователя.
+7. Пиши только простой текст: без Markdown, звёздочек, решёток, таблиц и эмодзи. Без вступлений и заключений — только дни.
+
+Формат каждого дня (строго, приёмы пищи — в этом порядке: ${meals.join(', ')}):
+=== ДЕНЬ N ===
+• Завтрак: Название блюда — ингредиент 60 г, ингредиент 200 мл — ~380 ккал, Б 20 / Ж 10 / У 50
+• (остальные приёмы пищи в том же формате)
+Итого за день: ~1850 ккал | Б 140 г | Ж 55 г | У 190 г`;
+}
+
+function profileBlock() {
+  const i = state.input, r = state.calc, m = r.macros;
+  const act = ACTIVITY_LEVELS.find(a => a.id === i.activity);
+  const lo = Math.round(r.target * 0.95), hi = Math.round(r.target * 1.05);
+  return `ПРОФИЛЬ
+- Пол: ${SEX_LABEL[i.sex]}; возраст: ${i.age} лет; рост: ${fmt(i.heightCm, 1)} см; вес: ${fmt(i.weightKg, 1)} кг
+- Процент жира (оценка): ${fmt(r.avgFat, 1)}% (${r.category.label.toLowerCase()})
+- Цель: ${GOALS[i.goal].label.toLowerCase()}${i.goalWeight ? ` (желаемый вес ${fmt(i.goalWeight, 1)} кг)` : ''}
+- Активность: ${act.label.toLowerCase()} (${act.short})
+
+НОРМА НА ДЕНЬ
+- Калории: ${r.target} ккал (допуск ±5%: ${lo}–${hi} ккал)
+- Белки ${m.protein.g} г, жиры ${m.fat.g} г, углеводы ${m.carbs.g} г
+
+ПИТАНИЕ
+- Приёмов пищи: ${i.meals} — ${MEAL_NAMES[i.meals].join(', ')}
+- Ограничения и аллергии: ${restrictionsText(i, true)}
+- Не использовать (нелюбимые продукты): ${i.dislikes || 'нет'}
+- Бюджет: ${BUDGETS[i.budget].ai}
+- Время на готовку: ${COOK_TIMES[i.cookTime].ai}`;
+}
+
+/** Названия уже использованных блюд — чтобы ИИ не повторялся. */
+function usedDishes() {
+  const names = [];
+  Object.keys(plan.days).map(Number).sort((a, b) => a - b).forEach(d => {
+    plan.days[d].split('\n').forEach(line => {
+      const m = line.replace(/^[•\-–*·]\s*/, '').match(/^([^:]{2,30}):\s*(.+)$/);
+      if (!m || /итого/i.test(m[1])) return;
+      const dish = m[2].split(/\s[—–-]\s/)[0].replace(/\(.*?\)/g, '').trim();
+      if (dish && dish.length < 70 && !names.includes(dish)) names.push(dish);
+    });
+  });
+  return names.slice(-90);
+}
+
+function buildDaysPrompt(days) {
+  const used = usedDishes();
+  return `${profileBlock()}
+
+ЗАДАНИЕ
+Составь ${daysLabel(days)} из 30-дневного плана питания. Ровно эти дни, по порядку, каждый — в заданном формате, начиная со строки «=== ДЕНЬ N ===».
+${used.length ? `\nУже использованные блюда (не повторяй их, придумай другие; базовые завтраки можно варьировать):\n${used.join('; ')}\n` : ''}`;
+}
+
+const SYSTEM_SHOPPING = 'Ты — помощник по планированию покупок. Пишешь на русском, только простым текстом: без Markdown, звёздочек, решёток, таблиц и эмодзи. Без вступлений и заключений.';
+
+function buildShoppingPrompt() {
+  const planText = Array.from({ length: TOTAL_DAYS }, (_, k) => `=== ДЕНЬ ${k + 1} ===\n${plan.days[k + 1]}`).join('\n\n');
+  const weeks = WEEKS.map((w, k) => `Неделя ${k + 1} (дни ${w[0]}–${w[w.length - 1]})`).join(', ');
+  return `Ниже — готовый план питания на 30 дней. Составь по нему список покупок по неделям: ${weeks}.
+
+Для каждой недели сгруппируй продукты по отделам (Овощи, фрукты и зелень; Мясо, птица, рыба; Молочное и яйца; Крупы, макароны, хлеб; Бакалея, масла и специи; Прочее). Суммируй количество по всем дням недели и округляй до удобной упаковки. Пропускай пустые отделы. Учитывай ограничения: ${restrictionsText(state.input, true)}.
+
+Формат строго такой:
+Неделя 1 (дни 1–7)
+Овощи, фрукты и зелень: огурцы 1,2 кг, помидоры 800 г, бананы 6 шт.
+Мясо, птица, рыба: куриное филе 1,5 кг
+(и так далее)
+
+ПЛАН:
+${planText}`;
+}
+
+/* ===================== Разбор ответа ===================== */
+function cleanText(t) {
+  return t.replace(/\*\*|__/g, '').replace(/^[ \t]*#{1,6}[ \t]*/gm, '').replace(/[ \t]+$/gm, '');
+}
+/** Делит ответ на дни по заголовкам «=== ДЕНЬ N ===». */
+function parseDays(text) {
+  const t = cleanText(text);
+  const re = /^[ \t=*#]*ДЕНЬ[ \t]+(\d{1,2})(?!\d)[^\n]*$/gim;
+  const marks = []; let m;
+  while ((m = re.exec(t))) marks.push({ n: +m[1], start: m.index, end: re.lastIndex });
+  const out = {};
+  marks.forEach((mk, k) => {
+    const body = t.slice(mk.end, k + 1 < marks.length ? marks[k + 1].start : t.length).trim();
+    if (body) out[mk.n] = body;
+  });
+  return out;
+}
+function parseDayKcal(text) {
+  const m = text.match(/итого[^\n]*?(\d[\d \u00a0]{1,6})\s*ккал/i);
+  return m ? parseInt(m[1].replace(/\D/g, ''), 10) : null;
+}
+
+/* ===================== Генерация плана ===================== */
+async function generateChunk(daysNeeded, key, signal) {
+  let need = [...daysNeeded];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_CHUNK && need.length; attempt++) {
+    setStatus(`Составляем ${daysLabel(need)}${attempt > 1 ? ' (докачиваем недостающие)' : ''}…`, true);
+    const { text, stopReason } = await callClaude({
+      key, signal, system: buildSystemDays(), maxTokens: MAX_TOKENS_DAYS,
+      messages: [{ role: 'user', content: buildDaysPrompt(need) }],
+    });
+    const parsed = parseDays(text);
+    // Ответ обрезан по длине → последний день мог оборваться: выбрасываем его и докачиваем отдельно
+    if (stopReason === 'max_tokens') {
+      const nums = Object.keys(parsed).map(Number);
+      if (nums.length) delete parsed[Math.max(...nums)];
+    }
+    need.forEach(d => { if (parsed[d]) plan.days[d] = parsed[d]; });
+    need = need.filter(d => !plan.days[d]);
+    renderPlan();
+  }
+  if (need.length) throw new ApiError('format', `ИИ не прислал ${daysLabel(need)} в нужном формате. Нажмите «Повторить».`);
+}
+
+async function generateShopping(key, signal) {
+  setStatus('Все 30 дней готовы. Составляем список покупок по неделям…', true);
+  const user = buildShoppingPrompt();
+  let messages = [{ role: 'user', content: user }];
+  let full = '';
+  for (let k = 0; k < 3; k++) {
+    const { text, stopReason } = await callClaude({ key, signal, system: SYSTEM_SHOPPING, maxTokens: MAX_TOKENS_SHOPPING, messages });
+    full = full ? full.trimEnd() + '\n' + text.trimStart() : text;
+    if (stopReason !== 'max_tokens') break;
+    // Ответ обрезан — просим продолжить с места остановки
+    messages = [
+      { role: 'user', content: user },
+      { role: 'assistant', content: full.trimEnd() },
+      { role: 'user', content: 'Ответ оборвался из-за ограничения длины. Продолжи список ровно с места остановки, без повторов и вступлений.' },
+    ];
+  }
+  return cleanText(full).replace(/^[ \t=]*СПИСОК ПОКУПОК[ \t=]*\n?/i, '').trim();
+}
+
+const readyCount = () => Object.keys(plan.days).length;
+const isComplete = () => readyCount() === TOTAL_DAYS && !!plan.shopping;
+
+async function runGeneration() {
+  const key = getKey();
+  if (!key) return;
+  plan.running = true; plan.failed = null; plan.stopped = false;
+  plan.controller = new AbortController();
+  updatePlanUI();
+  try {
+    for (const chunk of CHUNKS) {
+      const missing = chunk.filter(d => !plan.days[d]);
+      if (missing.length) await generateChunk(missing, key, plan.controller.signal);
+    }
+    if (!plan.shopping) { plan.shopping = await generateShopping(key, plan.controller.signal); renderPlan(); }
+    setStatus('Готово! План на 30 дней и список покупок составлены.', false);
+    toast('План готов');
+  } catch (e) {
+    if (e.kind === 'stopped') plan.stopped = true;
+    else plan.failed = e;
+  } finally {
+    plan.running = false; plan.controller = null;
+    updatePlanUI();
+  }
+}
+
+function resetPlan() {
+  plan.controller?.abort();
+  plan.days = {}; plan.shopping = ''; plan.failed = null; plan.stopped = false;
+  $('weeks').innerHTML = '';
+  setStatus('', false);
+}
+
+/** Что будет делать кнопка «Повторить/Продолжить». */
+function nextStageLabel() {
+  const first = Array.from({ length: TOTAL_DAYS }, (_, k) => k + 1).find(d => !plan.days[d]);
+  if (first) { const c = CHUNKS.find(ch => ch.includes(first)); return daysLabel(c.filter(d => !plan.days[d])); }
+  return 'список покупок';
+}
+
+/* ===================== Ключ API ===================== */
+function getKey() {
+  const key = $('apiKey').value.trim();
+  if (!key) { setError('apiKey', 'Вставьте API-ключ, чтобы ИИ мог составить план'); $('apiKey').focus(); return null; }
+  if (!key.startsWith('sk-')) { setError('apiKey', 'Похоже, это не API-ключ: обычно он начинается с «sk-ant-». Проверьте и попробуйте снова.'); $('apiKey').focus(); return null; }
+  setError('apiKey', '');
+  if ($('rememberKey').checked) store.set(KEY_STORAGE, key); else store.del(KEY_STORAGE);
+  return key;
+}
+(function restoreKey() {
+  const saved = store.get(KEY_STORAGE);
+  if (saved) { $('apiKey').value = saved; $('rememberKey').checked = true; }
+})();
+$('rememberKey').addEventListener('change', e => { if (!e.target.checked) store.del(KEY_STORAGE); });
+$('toggleKey').addEventListener('click', e => {
+  const inp = $('apiKey'), show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  e.currentTarget.textContent = show ? 'Скрыть' : 'Показать';
+  e.currentTarget.setAttribute('aria-pressed', String(show));
+});
+$('apiKey').addEventListener('input', () => setError('apiKey', ''));
+
+/* ===================== Отрисовка плана ===================== */
+function setStatus(text, busy) {
+  $('status').innerHTML = text ? `${busy ? '<span class="spinner" aria-hidden="true"></span>' : ''}<span>${escapeHtml(text)}</span>` : '';
+}
+
+function formatDayBody(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let html = '', list = [];
+  const flush = () => { if (list.length) { html += `<ul class="meals">${list.join('')}</ul>`; list = []; } };
+  for (const raw of lines) {
+    const line = raw.replace(/^[•\-–*·]\s*/, '');
+    if (/^итого/i.test(line)) { flush(); html += `<p class="total">${escapeHtml(line)}</p>`; continue; }
+    const m = line.match(/^([^:]{2,30}):\s*(.+)$/);
+    list.push(m ? `<li><b>${escapeHtml(m[1])}:</b> ${escapeHtml(m[2])}</li>` : `<li>${escapeHtml(line)}</li>`);
+  }
+  flush();
+  return html;
+}
+
+function dayHtml(n) {
+  const text = plan.days[n];
+  const kcal = parseDayKcal(text), t = state.calc.target;
+  let chip = '';
+  if (kcal) {
+    const dev = (kcal - t) / t * 100, off = Math.abs(dev) > 5;
+    chip = `<span class="chip${off ? ' chip-warn' : ''}" title="${off ? 'Отклонение от нормы больше 5%' : 'В пределах ±5% от нормы'}">~${fmt(kcal)} ккал${off ? ` · ${dev > 0 ? '+' : '−'}${fmt(Math.abs(dev))}%` : ''}</span>`;
+  }
+  return `<article class="day"><div class="day-head"><h4>День ${n}</h4>${chip}</div>${formatDayBody(text)}</article>`;
+}
+
+function formatShopping(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+    if (/^неделя\s+\d/i.test(line)) return `<h4>${escapeHtml(line)}</h4>`;
+    const m = line.replace(/^[•\-–*·]\s*/, '').match(/^([^:]{2,40}):\s*(.+)$/);
+    return m ? `<p><b>${escapeHtml(m[1])}:</b> ${escapeHtml(m[2])}</p>` : `<p>${escapeHtml(line)}</p>`;
+  }).join('');
+}
+
+function renderPlan() {
+  const wrap = $('weeks');
+  const any = readyCount() > 0;
+  if (!any && !plan.running) { wrap.innerHTML = ''; return; }
+  if (!wrap.childElementCount) {
+    WEEKS.forEach((w, k) => {
+      const d = document.createElement('details');
+      d.className = 'week'; if (k === 0) d.open = true;
+      d.innerHTML = `<summary><span class="wk-title">Неделя ${k + 1} <span class="muted">· дни ${w[0]}–${w[w.length - 1]}</span></span><span class="wk-count"></span></summary><div class="wk-body"></div>`;
+      wrap.appendChild(d);
+    });
+    const s = document.createElement('details');
+    s.className = 'week'; s.id = 'shopDetails'; s.hidden = true;
+    s.innerHTML = '<summary><span class="wk-title">🛒 Список покупок по неделям</span><span class="wk-count ready">готово</span></summary><div class="shop-body"></div>';
+    wrap.appendChild(s);
+  }
+  WEEKS.forEach((w, k) => {
+    const det = wrap.children[k];
+    const ready = w.filter(d => plan.days[d]);
+    const cnt = det.querySelector('.wk-count');
+    cnt.textContent = ready.length === w.length ? 'готово' : `${ready.length} из ${w.length}`;
+    cnt.classList.toggle('ready', ready.length === w.length);
+    det.querySelector('.wk-body').innerHTML = ready.length ? ready.map(dayHtml).join('') : '<p class="pad muted">Дни этой недели ещё не составлены.</p>';
+  });
+  const shop = $('shopDetails');
+  shop.hidden = !plan.shopping;
+  if (plan.shopping) shop.querySelector('.shop-body').innerHTML = formatShopping(plan.shopping);
+  updateProgress();
+}
+
+function updateProgress() {
+  const n = readyCount();
+  const pct = Math.round(n / TOTAL_DAYS * 100);
+  $('progressText').textContent = `Готово ${n} из ${TOTAL_DAYS} дней${n === TOTAL_DAYS && plan.shopping ? ' + список покупок' : ''}`;
+  $('progressPct').textContent = `${pct}%`;
+  $('progressFill').style.width = `${pct}%`;
+  $('progressBar').setAttribute('aria-valuenow', String(n));
+}
+
+function updatePlanUI() {
+  const any = readyCount() > 0;
+  const gen = $('generateBtn');
+  $('progressBox').hidden = !(any || plan.running);
+  $('stopBtn').hidden = !plan.running;
+  gen.hidden = plan.running;
+  $('apiKey').disabled = plan.running;
+  $('editBtn').disabled = plan.running;
+  $('copyBtn').disabled = !any;
+  $('downloadBtn').disabled = !any;
+
+  if (isComplete()) gen.textContent = '↻ Составить план заново';
+  else if (plan.failed) gen.textContent = `Повторить: ${nextStageLabel()}`;
+  else if (plan.stopped || any) gen.textContent = `Продолжить: ${nextStageLabel()}`;
+  else gen.textContent = 'Составить план на 30 дней';
+
+  const box = $('planError');
+  if (plan.failed) box.innerHTML = `<div class="note err"><p><b>Не получилось:</b> ${escapeHtml(plan.failed.message)}</p>${any ? '<p>Уже готовые дни сохранены — повтор продолжит с места ошибки.</p>' : ''}</div>`;
+  else if (plan.stopped) box.innerHTML = `<div class="note info"><p>${escapeHtml(API_ERRORS.stopped.text)}</p></div>`;
+  else box.innerHTML = '';
+  if (!plan.running && (plan.failed || plan.stopped)) setStatus('', false);
+  renderPlan();
+}
+
+$('generateBtn').addEventListener('click', () => {
+  if (plan.running) return;
+  if (isComplete()) {
+    if (!confirm('Составить новый план? Текущий будет заменён.')) return;
+    resetPlan();
+  }
+  runGeneration();
+});
+$('stopBtn').addEventListener('click', () => plan.controller?.abort());
+
+/* ===================== Экспорт: копирование и .txt ===================== */
+function buildExportText() {
+  const i = state.input, r = state.calc, m = r.macros;
+  const act = ACTIVITY_LEVELS.find(a => a.id === i.activity);
+  const line = '='.repeat(56);
+  const out = [];
+  out.push('NutriPlan AI — персональный план питания на 30 дней');
+  out.push(`Дата: ${new Date().toLocaleDateString('ru-RU')}`);
+  out.push(line, 'ВАШИ ДАННЫЕ');
+  out.push(`Пол: ${SEX_LABEL[i.sex]}; возраст: ${i.age} лет; рост: ${fmt(i.heightCm, 1)} см; вес: ${fmt(i.weightKg, 1)} кг`);
+  out.push(`Замеры: шея ${fmt(i.neckCm, 1)} см, талия ${fmt(i.waistCm, 1)} см${i.hipsCm ? `, бёдра ${fmt(i.hipsCm, 1)} см` : ''}`);
+  out.push(`Цель: ${GOALS[i.goal].label}${i.goalWeight ? ` (желаемый вес ${fmt(i.goalWeight, 1)} кг)` : ''}`);
+  out.push(`Активность: ${act.label} (×${String(act.factor).replace('.', ',')})`);
+  out.push(`Приёмов пищи: ${i.meals}; ограничения: ${restrictionsText(i)}; не использовать: ${i.dislikes || 'нет'}`);
+  out.push(`Бюджет: ${BUDGETS[i.budget].label}; время на готовку: ${COOK_TIMES[i.cookTime].label}`);
+  out.push('', 'РАСЧЁТЫ');
+  out.push(`Процент жира: ВМС США ${fmt(r.navy, 1)}% · Деуренберг ${fmt(r.deurenberg, 1)}% · среднее ${fmt(r.avgFat, 1)}% (${r.category.label.toLowerCase()})`);
+  out.push(`ИМТ: ${fmt(r.bmi, 1)}`);
+  out.push(`Базовый обмен (BMR): ${fmt(r.bmr)} ккал`);
+  out.push(`Суточный расход (TDEE): ${fmt(r.tdee)} ккал`);
+  out.push(`Норма на день: ${fmt(r.target)} ккал${r.floorApplied ? ` (поднята до безопасного минимума с ${fmt(r.rawTarget)} ккал)` : ''}`);
+  out.push(`Белки: ${m.protein.g} г (${m.protein.pct}%) · Жиры: ${m.fat.g} г (${m.fat.pct}%) · Углеводы: ${m.carbs.g} г (${m.carbs.pct}%)`);
+  out.push(line, 'ПЛАН ПИТАНИЯ');
+  const ready = readyCount();
+  if (ready < TOTAL_DAYS) out.push(`(План составлен частично: ${ready} из ${TOTAL_DAYS} дней)`);
+  WEEKS.forEach((w, k) => {
+    const days = w.filter(d => plan.days[d]);
+    if (!days.length) return;
+    out.push('', `--- НЕДЕЛЯ ${k + 1} (дни ${w[0]}–${w[w.length - 1]}) ---`);
+    days.forEach(d => out.push('', `ДЕНЬ ${d}`, plan.days[d]));
+  });
+  if (plan.shopping) out.push('', line, 'СПИСОК ПОКУПОК', '', plan.shopping);
+  out.push('', line, 'Важно: это справочный расчёт, а не медицинская рекомендация. При заболеваниях, беременности и сильном дефиците веса проконсультируйтесь с врачом.');
+  return out.join('\n');
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* перейдём к запасному способу */ }
+  // Запасной вариант для старых браузеров
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+$('copyBtn').addEventListener('click', async () => {
+  const ok = await copyText(buildExportText());
+  toast(ok ? 'Скопировано' : 'Не удалось скопировать — воспользуйтесь «Скачать .txt»');
+});
+$('downloadBtn').addEventListener('click', () => {
+  // BOM (\uFEFF) — чтобы «Блокнот» в Windows правильно показал кириллицу
+  const blob = new Blob(['\uFEFF' + buildExportText()], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `nutriplan-${isoDate()}.txt`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  toast('Файл сохранён');
+});
+
+/* ===================== Старт ===================== */
+syncSex();
+syncGoal();
+showStep(0, false);
+</script>
+</body>
+</html>
